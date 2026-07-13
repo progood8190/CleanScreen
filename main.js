@@ -34,13 +34,20 @@
     closeBtn.insertAdjacentElement('afterend', box);
   };
 
-  // 2) Strip the left homepage panel, but stash the two auth blocks (hidden)
-  //    so defly's own login/logout/stats code never hits a missing element.
+  // 2) Remove the left box's .inside (login box, friend list, news,
+  //    how-to-play, discord). The two auth blocks are stashed in a hidden
+  //    holder so defly's own login/logout/stats code never hits a missing
+  //    element. Nothing else on the page is touched — #tourney-countdown
+  //    lives outside this panel and stays exactly where defly puts it.
   const cleanupHomepage = () => {
-    const loginBox = document.querySelector('.login-box');
+    const holder0 = document.getElementById('defly-auth-holder');
+    // ignore the .login-box once it's been stashed inside the hidden holder
+    const loginBox = [...document.querySelectorAll('.login-box')]
+      .find(el => !(holder0 && holder0.contains(el)));
     if (!loginBox) return;
     const panel = loginBox.closest('.inside') || loginBox.parentElement;
-    let holder = document.getElementById('defly-auth-holder');
+
+    let holder = holder0;
     if (!holder) {
       holder = document.createElement('div');
       holder.id = 'defly-auth-holder';
@@ -51,7 +58,16 @@
       const el = document.getElementById(id);
       if (el && el.parentElement !== holder) holder.appendChild(el);
     });
-    if (panel) panel.remove();
+
+    // safety net only: if defly ever puts the tourney countdown inside this
+    // panel, lift it out one step instead of deleting it with the panel.
+    // (Currently it lives elsewhere, so this never runs and it's never moved.)
+    const tourney = document.getElementById('tourney-countdown');
+    if (tourney && panel.contains(tourney)) {
+      panel.insertAdjacentElement('beforebegin', tourney);
+    }
+
+    panel.remove();
   };
 
   const sync = () => { cleanupHomepage(); drawButtons(); };
@@ -67,9 +83,14 @@
 
   // re-strip the panel if it ever comes back
   const host = document.getElementById('homepage-content') || document.body;
-  const o2 = new MutationObserver(() => { if (document.querySelector('.login-box')) sync(); });
+  const o2 = new MutationObserver(() => {
+    const holder = document.getElementById('defly-auth-holder');
+    const back = [...document.querySelectorAll('.login-box')]
+      .some(el => !(holder && holder.contains(el)));
+    if (back) sync();
+  });
   o2.observe(host, { childList: true, subtree: true });
   mod.observers.push(o2);
 
-  console.log('[deflyPanelMod] active — My Statistics / My Account / Sign out injected; login button & left panel removed.');
+  console.log('[deflyPanelMod] active — left panel removed; account buttons in settings; tourney countdown untouched.');
 })();
