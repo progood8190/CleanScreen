@@ -1,4 +1,8 @@
 (() => {
+  // fires the instant this script is evaluated, even if the page DOM
+  // doesn't exist yet — proves the feature bundle actually ran this code
+  console.log('cleanscreen injected');
+
   // tidy up any previous version of this script
   try { window.__deflyAuthMod?.observers?.forEach(o => o.disconnect()); } catch {}
   try { window.__deflyPanelMod?.observers?.forEach(o => o.disconnect()); } catch {}
@@ -108,7 +112,7 @@
     o2.observe(host, { childList: true, subtree: true });
     mod.observers.push(o2);
 
-    console.log('[deflyPanelMod] active — settings buttons injected; left panel stripped; tourney countdown kept alive.');
+    console.log('cleanscreen: active — settings buttons injected; left panel stripped; tourney countdown kept alive.');
   };
 
   const start = () => {
@@ -131,6 +135,7 @@
     // older version of this mod — init handles missing pieces gracefully
     start();
   } else {
+    console.log('cleanscreen: injected early — waiting for defly homepage elements…');
     // documentElement exists even at document_start, so this can't throw
     const boot = new MutationObserver(() => {
       if (!ready()) return;
