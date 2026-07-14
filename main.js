@@ -80,7 +80,7 @@
       tourney.style.margin = '8px 0';
     } else {
       // no countdown in here — safe to drop the whole panel like before
-      panel.remove();
+      panel.style.setProperty('display', 'none', 'important');
     }
   };
 
