@@ -36,73 +36,114 @@
   };
 
   // 2) Strip the left homepage panel down to JUST the tourney countdown.
-  //    - The auth blocks are stashed in a hidden holder so defly's own
-  //      login/logout/stats code never hits a missing element.
-  //    - #tourney-countdown is MOVED (never cloned, never removed), so
-  //      defly's own timer keeps updating the very same element — the
-  //      countdown text keeps ticking, and when the tourney opens defly
-  //      flips it into the clickable "Join tourney" button as normal.
+  //    #tourney-countdown is MOVED (never cloned/removed) so defly's own
+  //    timer keeps ticking on the same node and can flip it into the
+  //    active "Join tourney" button.
   const cleanupHomepage = () => {
     const loginBox = document.querySelector('.login-box');
     if (!loginBox) return;
     const panel = loginBox.closest('.inside') || loginBox.parentElement;
     if (!panel) return;
 
-    // hidden stash for the auth blocks
+    // hidden stash so defly's login/logout/stats code never hits a missing element
     let holder = document.getElementById('defly-auth-holder');
     if (!holder) {
       holder = document.createElement('div');
       holder.id = 'defly-auth-holder';
       holder.style.display = 'none';
-      document.body.appendChild(holder);
+      (document.body || document.documentElement).appendChild(holder);
     }
     ['unconnected-block', 'connected-block'].forEach(id => {
       const el = document.getElementById(id);
       if (el && el.parentElement !== holder) holder.appendChild(el);
     });
 
-    // the "?" next to the countdown opens #event-popup — if that popup
-    // happens to live inside this panel, re-home it to <body> so it can
-    // still be opened after the cleanup (must NOT go in the hidden holder,
-    // or it could never become visible again)
+    // the "?" opens #event-popup — if it lives inside the panel, re-home it
+    // to <body> so it can still open (NOT into the hidden holder)
     const evPopup = document.getElementById('event-popup');
-    if (evPopup && panel.contains(evPopup)) document.body.appendChild(evPopup);
+    if (evPopup && panel.contains(evPopup)) {
+      (document.body || document.documentElement).appendChild(evPopup);
+    }
 
     const tourney = document.getElementById('tourney-countdown');
 
     if (tourney && panel.contains(tourney)) {
       // keep the panel as a slim container holding ONLY the countdown
-      panel.appendChild(tourney); // move it to be a direct child (same node, listeners intact)
+      panel.appendChild(tourney); // same node — listeners & timer intact
       [...panel.children].forEach(child => {
         if (child.id !== 'tourney-countdown') child.remove();
       });
       panel.style.textAlign = 'center';
       tourney.style.margin = '8px 0';
     } else {
-      // no countdown in here — safe to drop the whole panel like before
       panel.remove();
     }
   };
 
   const sync = () => { cleanupHomepage(); drawButtons(); };
-  sync();
 
-  // keep the buttons present if the settings panel re-renders
-  const sp = document.getElementById('settings-popup');
-  if (sp) {
-    const o = new MutationObserver(() => drawButtons());
-    o.observe(sp, { childList: true });
-    mod.observers.push(o);
+  // ---- main init: only ever runs once, and only when the DOM is usable ----
+  let started = false;
+  const init = () => {
+    if (started) return;
+    started = true;
+
+    sync();
+
+    // keep the buttons present if the settings panel re-renders
+    const sp = document.getElementById('settings-popup');
+    if (sp) {
+      const o = new MutationObserver(() => drawButtons());
+      o.observe(sp, { childList: true });
+      mod.observers.push(o);
+    }
+
+    // re-strip the panel if defly ever re-renders it
+    const host = document.getElementById('homepage-content')
+              || document.body
+              || document.documentElement; // never null -> observe can't throw
+    const o2 = new MutationObserver(() => {
+      if (document.querySelector('.login-box')) sync();
+    });
+    o2.observe(host, { childList: true, subtree: true });
+    mod.observers.push(o2);
+
+    console.log('[deflyPanelMod] active — settings buttons injected; left panel stripped; tourney countdown kept alive.');
+  };
+
+  const start = () => {
+    try { init(); } catch (err) {
+      // never let this feature take down the rest of the account bundle
+      // (an uncaught error here can trigger the powerup loader's revert())
+      console.error('[deflyPanelMod] init failed:', err);
+    }
+  };
+
+  // ---- boot logic ----
+  // The deflypowerup loader injects account features DURING page startup,
+  // often before .login-box / #settings-popup (or even <body>) exist.
+  // In the console everything already exists. So: wait for the elements.
+  const ready = () =>
+    document.getElementById('settings-popup') && document.querySelector('.login-box');
+
+  if (ready() || document.readyState === 'complete') {
+    // console paste, late injection, or elements already stripped by an
+    // older version of this mod — init handles missing pieces gracefully
+    start();
+  } else {
+    // documentElement exists even at document_start, so this can't throw
+    const boot = new MutationObserver(() => {
+      if (!ready()) return;
+      boot.disconnect();
+      start();
+    });
+    boot.observe(document.documentElement, { childList: true, subtree: true });
+    mod.observers.push(boot);
+
+    // safety net: by full load the homepage HTML definitely parsed
+    window.addEventListener('load', () => {
+      boot.disconnect();
+      start();
+    }, { once: true });
   }
-
-  // re-strip the panel if defly ever re-renders it (a fresh .login-box
-  // reappearing is the signal; the fresh countdown gets rescued again)
-  const host = document.getElementById('homepage-content') || document.body;
-  const o2 = new MutationObserver(() => {
-    if (document.querySelector('.login-box')) sync();
-  });
-  o2.observe(host, { childList: true, subtree: true });
-  mod.observers.push(o2);
-
-  console.log('[deflyPanelMod] active — settings buttons injected; left panel stripped; tourney countdown kept alive.');
 })();
